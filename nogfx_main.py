@@ -1,9 +1,12 @@
 import math
 import itertools
+import functools
 import operator
 import concurrent.futures
 import pymunk
 import neat
+import pyglet
+import pymunk.pyglet_util
 
 
 Position = tuple[float, float]
@@ -172,9 +175,49 @@ def evaluate_car(car: Car) -> float:
         if frames % 120 == 0: # every "second"
             car.kill_if_stuck()
 
+        if frames > 50000:
+            print('Took too long')
+            car.die()
+            return car.genome.fitness
+
         frames += 1
 
     return car.genome.fitness
+
+
+class GraphicalReporter(neat.reporting.BaseReporter):
+    def post_evaluate(self, config, pop, species, best_genome):
+        print('Starting simulation...')
+
+        nn = neat.nn.FeedForwardNetwork.create(best_genome, config)
+        car = Car((100, 100), nn, best_genome)
+
+        env = Environment()
+        car.add_to_space(env)
+
+        window = pyglet.window.Window(800, 800)
+        draw_options = pymunk.pyglet_util.DrawOptions()
+
+        pyglet.clock.schedule_interval(lambda dt: car.think(), 1/120)
+        pyglet.clock.schedule_interval(lambda dt: car.apply_force_at_local_point((10 ** 7 * 1/120 / 2, 0)), 1/120)
+        pyglet.clock.schedule_interval(env.step, 1/120)
+
+        def exit_gracefully() -> None:
+            pyglet.app.exit()
+            window.close()
+
+            return False
+
+        end_simul = env.add_collision_handler(5, 9)
+        end_simul.pre_solve = lambda a, s, d: exit_gracefully()
+
+        @window.event
+        def on_draw() -> None:
+            pyglet.gl.glClearColor(0, 0, 0, 0)
+            window.clear()
+            env.debug_draw(draw_options)
+
+        pyglet.app.run()
 
 
 if __name__ == '__main__':
@@ -189,6 +232,7 @@ if __name__ == '__main__':
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
     p.add_reporter(neat.StatisticsReporter())
+    p.add_reporter(GraphicalReporter())
 
     try:
         p.run(run_simulation)
