@@ -5,14 +5,20 @@ import itertools
 import operator
 import math
 import neat
-
+from pyglet.window import mouse
+import RectangleCollision
+import MouseHandler
 
 Position = tuple[float, float]
 
 
-WINDOW = pyglet.window.Window(800, 600)
+WINDOW = pyglet.window.Window(800, 800)
 DRAW_OPTIONS = pymunk.pyglet_util.DrawOptions()
+MOUSE = MouseHandler.MouseStateHandler()
+WINDOW.push_handlers(MOUSE)
 
+button_image = pyglet.image.load('button.png')
+#button_sprite = pyglet.sprite.Sprite(button_image, x=135, y=65)
 
 class Car(pymunk.Body):
     def __init__(self, start: Position, brain: neat.nn.feed_forward.FeedForwardNetwork, genome: neat.genome.DefaultGenome):
@@ -147,7 +153,7 @@ class Environment(pymunk.Space):
             wall = pymunk.Segment(self.static_body, a, b, 1)
             wall.elasticity = 0
             wall.collision_type = 9
-
+            
             self.add(wall)
 
     def run_simulation(self, genomes, config) -> None:
@@ -178,6 +184,25 @@ class Environment(pymunk.Space):
         pyglet.clock.unschedule(reward_if_moving)
         pyglet.clock.unschedule(kill_if_not_moving)
 
+        if RectangleCollision.collision.rectangle(MOUSE["x"], MOUSE["y"], 0, 700, 1, 1, 100 ,100):
+            if MOUSE[mouse.LEFT]:
+                print("loading layout 1")
+                for shape in self.shapes:
+                    self.remove(shape)
+
+                self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
+                self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
+
+        elif RectangleCollision.collision.rectangle(MOUSE["x"], MOUSE["y"], 100, 700, 1, 1, 100 ,100):
+            if MOUSE[mouse.LEFT]:
+                print("loading layout 2")
+
+                for shape in self.shapes:
+                    self.remove(shape)
+
+                self.create_walls((200, 150), [(100, 200), (150, 0), (150, -200), (-400, 0), (0, -100)])
+                self.create_walls((0, 100), [(200, 350), (350, 0), (250, -350), (0, -50), (-800, 0), (0, 50)])
+
     def close_gracefully(self):
         pyglet.app.exit()
         self.running = 0
@@ -191,7 +216,8 @@ def on_draw() -> None:
     pyglet.gl.glClearColor(0, 0, 0, 0)
     WINDOW.clear()
     ENVIRONMENT.debug_draw(DRAW_OPTIONS)
-
+    button_image.blit(0, 700, 0, 100, 100)
+    button_image.blit(100, 700, 0, 100, 100)
 
 if __name__ == '__main__':
     # Set configuration file
@@ -207,7 +233,4 @@ if __name__ == '__main__':
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
 
-    try:
-        p.run(ENVIRONMENT.run_simulation)
-    except:
-        print("Interrupted!")
+    p.run(ENVIRONMENT.run_simulation)
