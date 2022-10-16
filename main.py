@@ -100,7 +100,7 @@ class Car(pymunk.Body):
         pyglet.clock.unschedule(self.impulse)
         pyglet.clock.unschedule(self.thought)
 
-        self.genome.fitness = self.distance_traveled # FIXME: alguma outra funcao que nao seja f(x)
+        self.genome.fitness = self.distance_traveled  # FIXME: alguma outra funcao que nao seja f(x)
         print(self.distance_traveled)
 
         self.space.remove(self, self.shape, *self.sensors)
