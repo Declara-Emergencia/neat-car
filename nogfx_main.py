@@ -5,8 +5,8 @@ import operator
 import concurrent.futures
 import pymunk
 import neat
-import pyglet
-import pymunk.pyglet_util
+import pygame
+import pymunk.pygame_util
 
 
 Position = tuple[float, float]
@@ -213,51 +213,53 @@ def simulate_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
     nn = neat.nn.FeedForwardNetwork.create(genome, config)
     car = Car((100, 100), nn, genome)
 
-    window = pyglet.window.Window(800, 800)
+    pygame.init()
+    window = pygame.display.set_mode((800, 800))
+    clock = pygame.time.Clock()
+
     env = Environment()
     car.add_to_space(env)
 
-    draw_options = pymunk.pyglet_util.DrawOptions()
+    draw_options = pymunk.pygame_util.DrawOptions(window)
 
-    def tick(dt: float) -> None:
-        car.think()
-        car.accelerate()
-        env.step(1/120)
+    def exit_gracefully() -> bool:
+        pygame.display.quit()
+        pygame.quit()
 
-    pyglet.clock.schedule_interval(tick, 1/120)
-
-    state = {'running': 1}
-
-    def exit_gracefully(state) -> bool:
-        pyglet.app.exit()
-        window.close()
         print('SIMULATION FITNESS:', car.distance_traveled)
-
-        state['running'] = 0
 
         return False
 
     end_simul = env.add_collision_handler(5, 9)
-    end_simul.pre_solve = lambda a, s, d: exit_gracefully(state)
+    end_simul.pre_solve = lambda a, s, d: exit_gracefully()
 
-    @window.event
-    def on_draw() -> None:
-        pyglet.gl.glClearColor(0, 0, 0, 0)
-        window.clear()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                exit_gracefully()
+                return
+
+        car.think()
+        car.accelerate()
+        env.step(1/120)
+
+        window.fill((255,255,255))
         env.debug_draw(draw_options)
+        pygame.display.flip()
 
-    pyglet.app.run()
-
-    if state['running'] == 1:
-        print('Exited early of simulation')
-        exit(1)
+        clock.tick(120)
 
 
 class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
         print('Starting simulation...')
 
-        simulate_genome(best_genome, config)
+        try:
+            simulate_genome(best_genome, config)
+        except Exception as e:
+            print('Finished:', e)
+
+            return
 
 
 if __name__ == '__main__':

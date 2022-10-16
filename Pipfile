@@ -5,9 +5,9 @@ name = "pypi"
 
 [packages]
 pymunk = "*"
-pyglet = "*"
 neat-python = "*"
 RectangleCollision = "*"
+pygame = "*"
 
 [dev-packages]
 jedi = "*"
