@@ -177,16 +177,7 @@ class Environment(pymunk.Space):
             milestone = Milestone(p, self)
 
 
-def run_simulation(genomes, config) -> None:
-    for id, g in genomes:
-        print(evaluate_genome(g))
-
-    #with concurrent.futures.ProcessPoolExecutor() as pool:
-        #fitnesses = pool.map(evaluate_car, cars)
-
-    #print(fitnesses)
-
-def evaluate_genome(genome) -> float:
+def evaluate_genome(genome, config) -> float:
     nn = neat.nn.FeedForwardNetwork.create(genome, config)
     genome.fitness = 0
     car = Car((100, 100), nn, genome)
@@ -213,10 +204,12 @@ def evaluate_genome(genome) -> float:
 
         frames += 1
 
+    print(car.genome.fitness)
+
     return car.genome.fitness
 
 
-def simulate_genome(genome) -> None:
+def simulate_genome(genome, config) -> None:
     nn = neat.nn.FeedForwardNetwork.create(genome, config)
     car = Car((100, 100), nn, genome)
 
@@ -252,7 +245,7 @@ class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
         print('Starting simulation...')
 
-        simulate_genome(best_genome)
+        simulate_genome(best_genome, config)
 
 
 if __name__ == '__main__':
@@ -270,6 +263,7 @@ if __name__ == '__main__':
     p.add_reporter(CustomReporter())
 
     try:
-        p.run(run_simulation)
+        pe = neat.ParallelEvaluator(4, evaluate_genome)
+        p.run(pe.evaluate)
     except Exception as e:
         print("Interrupted!", e)
