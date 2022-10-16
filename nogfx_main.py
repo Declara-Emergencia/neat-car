@@ -67,6 +67,9 @@ class Car(pymunk.Body):
     def add_to_space(self, space: pymunk.Space) -> None:
         space.add(self, self.shape, *self.sensors)
 
+    def accelerate(self) -> None:
+        self.apply_force_at_local_point((10 ** 7 * 1/120 / 2, 0))
+
     def think(self) -> None:
         output = self.brain.activate(self.get_distances())
         i = output.index(max(output))  # Get node of highest value from outputs
@@ -166,7 +169,7 @@ def evaluate_car(car: Car) -> float:
 
     while car.alive:
         car.think()
-        car.apply_force_at_local_point((10 ** 7 * 1/120 / 2, 0))
+        car.accelerate()
         env.step(1/120)
 
         if frames % 44 == 0: # 5 times every "second"
@@ -199,7 +202,7 @@ class GraphicalReporter(neat.reporting.BaseReporter):
         draw_options = pymunk.pyglet_util.DrawOptions()
 
         pyglet.clock.schedule_interval(lambda dt: car.think(), 1/120)
-        pyglet.clock.schedule_interval(lambda dt: car.apply_force_at_local_point((10 ** 7 * 1/120 / 2, 0)), 1/120)
+        pyglet.clock.schedule_interval(lambda dt: car.accelerate(), 1/120)
         pyglet.clock.schedule_interval(env.step, 1/120)
 
         def exit_gracefully() -> None:
