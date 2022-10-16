@@ -86,6 +86,14 @@ class Car(pymunk.Body):
 
         self.previous_position_movement = self.position
 
+
+    def milestone(self, milestone) -> bool:
+        self.distance_traveled += 500
+
+        self.space.remove(milestone)
+
+        return False
+
     def kill_if_stuck(self) -> None:
         d = math.dist(self.previous_position_stuck, self.position)
 
@@ -113,12 +121,29 @@ class Sensor(pymunk.Segment):
         self.distance = distance
 
 
+class Milestone(pymunk.Circle):
+    def __init__(self, position: Position, space: pymunk.Space):
+        super().__init__(space.static_body, 10, position)
+
+        self.sensor = True
+        self.collision_type = 7
+        self.color = (255, 255, 0, 0.5)
+
+        space.add(self)
+
+
 class Environment(pymunk.Space):
     def __init__(self):
         super().__init__()
 
         self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
         self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
+
+        self.create_milestones([(200, 100), (300, 100), (400, 100), (500, 100),
+                                (550, 150), (600, 200), (650, 250),
+                                (650, 350), (600, 400), (550, 450),
+                                (500, 500), (400, 500), (300, 500), (200, 500),
+                                (100, 500), (100, 400), (100, 300), (100, 200)])
 
         self.damping = 0.5
 
@@ -128,6 +153,9 @@ class Environment(pymunk.Space):
 
         car_crash_handler = self.add_collision_handler(5, 9)
         car_crash_handler.pre_solve = lambda a, s, d: a.shapes[0].body.die()
+
+        milestone_handler = self.add_collision_handler(5, 7)
+        milestone_handler.pre_solve = lambda a, s, d: a.shapes[0].body.milestone(a.shapes[1])
 
         car_coll_handler = self.add_collision_handler(5, 5)
         car_coll_handler.pre_solve = lambda a, s, d: False
@@ -144,25 +172,25 @@ class Environment(pymunk.Space):
 
             self.add(wall)
 
+    def create_milestones(self, positions: [Position]) -> None:
+        for p in positions:
+            milestone = Milestone(p, self)
+
 
 def run_simulation(genomes, config) -> None:
-    cars = []
-
     for id, g in genomes:
-        nn = neat.nn.FeedForwardNetwork.create(g, config)
-        g.fitness = 0
-
-        cars.append(Car((100, 100), nn, g))
+        print(evaluate_genome(g))
 
     #with concurrent.futures.ProcessPoolExecutor() as pool:
         #fitnesses = pool.map(evaluate_car, cars)
 
     #print(fitnesses)
 
-    for car in cars:
-        print(evaluate_car(car))
+def evaluate_genome(genome) -> float:
+    nn = neat.nn.FeedForwardNetwork.create(genome, config)
+    genome.fitness = 0
+    car = Car((100, 100), nn, genome)
 
-def evaluate_car(car: Car) -> float:
     frames = 1
     env = Environment()
     car.add_to_space(env)
@@ -188,39 +216,43 @@ def evaluate_car(car: Car) -> float:
     return car.genome.fitness
 
 
-class GraphicalReporter(neat.reporting.BaseReporter):
+def simulate_genome(genome) -> None:
+    nn = neat.nn.FeedForwardNetwork.create(genome, config)
+    car = Car((100, 100), nn, genome)
+
+    env = Environment()
+    car.add_to_space(env)
+
+    window = pyglet.window.Window(800, 800)
+    draw_options = pymunk.pyglet_util.DrawOptions()
+
+    pyglet.clock.schedule_interval(lambda dt: car.think(), 1/120)
+    pyglet.clock.schedule_interval(lambda dt: car.accelerate(), 1/120)
+    pyglet.clock.schedule_interval(env.step, 1/120)
+
+    def exit_gracefully() -> None:
+        pyglet.app.exit()
+        window.close()
+
+        return False
+
+    end_simul = env.add_collision_handler(5, 9)
+    end_simul.pre_solve = lambda a, s, d: exit_gracefully()
+
+    @window.event
+    def on_draw() -> None:
+        pyglet.gl.glClearColor(0, 0, 0, 0)
+        window.clear()
+        env.debug_draw(draw_options)
+
+    pyglet.app.run()
+
+
+class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
         print('Starting simulation...')
 
-        nn = neat.nn.FeedForwardNetwork.create(best_genome, config)
-        car = Car((100, 100), nn, best_genome)
-
-        env = Environment()
-        car.add_to_space(env)
-
-        window = pyglet.window.Window(800, 800)
-        draw_options = pymunk.pyglet_util.DrawOptions()
-
-        pyglet.clock.schedule_interval(lambda dt: car.think(), 1/120)
-        pyglet.clock.schedule_interval(lambda dt: car.accelerate(), 1/120)
-        pyglet.clock.schedule_interval(env.step, 1/120)
-
-        def exit_gracefully() -> None:
-            pyglet.app.exit()
-            window.close()
-
-            return False
-
-        end_simul = env.add_collision_handler(5, 9)
-        end_simul.pre_solve = lambda a, s, d: exit_gracefully()
-
-        @window.event
-        def on_draw() -> None:
-            pyglet.gl.glClearColor(0, 0, 0, 0)
-            window.clear()
-            env.debug_draw(draw_options)
-
-        pyglet.app.run()
+        simulate_genome(best_genome)
 
 
 if __name__ == '__main__':
@@ -235,7 +267,7 @@ if __name__ == '__main__':
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
     p.add_reporter(neat.StatisticsReporter())
-    p.add_reporter(GraphicalReporter())
+    p.add_reporter(CustomReporter())
 
     try:
         p.run(run_simulation)
