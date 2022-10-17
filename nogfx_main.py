@@ -68,7 +68,7 @@ class Car(pymunk.Body):
         space.add(self, self.shape, *self.sensors)
 
     def accelerate(self) -> None:
-        self.apply_force_at_local_point((10 ** 6 / 2, 0))
+        self.apply_force_at_local_point((10 ** 6 / 10, 0))
 
     def think(self) -> None:
         output = self.brain.activate(self.get_distances())
@@ -105,7 +105,7 @@ class Car(pymunk.Body):
     def die(self) -> bool:
         self.alive = False
 
-        self.genome.fitness = self.distance_traveled # FIXME: alguma outra funcao que nao seja f(x)
+        self.genome.fitness = self.distance_traveled
 
         self.space.remove(self, self.shape, *self.sensors)
 
@@ -225,8 +225,6 @@ def simulate_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
     def exit_gracefully() -> bool:
         pygame.display.quit()
         pygame.quit()
-
-        print('SIMULATION FITNESS:', car.distance_traveled)
 
         return False
 
