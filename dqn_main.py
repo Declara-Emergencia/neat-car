@@ -261,7 +261,7 @@ def simulate_agent(agent: DQNAgent) -> None:
     end_simul = env.add_collision_handler(5, 9)
     end_simul.pre_solve = lambda a, s, d: exit_gracefully()
 
-    while True:
+    while car.alive:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 exit_gracefully()
@@ -284,10 +284,15 @@ if __name__ == '__main__':
     agent = DQNAgent(5, 3)
 
     for e in range(10):
-        print('EPISODE:', e)
         car = Car((100, 100), agent)
         env = Environment()
         car.add_to_space(env)
+
+        pygame.init()
+        window = pygame.display.set_mode((800, 800))
+        clock = pygame.time.Clock()
+        draw_options = pymunk.pygame_util.DrawOptions(window)
+
         frames = 1
 
         while car.alive:
@@ -306,7 +311,14 @@ if __name__ == '__main__':
 
             frames += 1
 
-            if len(agent.memory) > batch_size:
-                agent.replay(batch_size)
+            window.fill((255,255,255))
+            env.debug_draw(draw_options)
+            pygame.display.flip()
 
-    simulate_genome(agent)
+            clock.tick(120)
+
+        if len(agent.memory) > batch_size:
+            agent.replay(batch_size)
+
+
+    simulate_agent(agent)
