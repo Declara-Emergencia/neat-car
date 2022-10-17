@@ -3,8 +3,10 @@ import itertools
 import functools
 import operator
 import concurrent.futures
+import sys
 import pymunk
 import neat
+from neat.graphs import feed_forward_layers
 import pygame
 import pymunk.pygame_util
 
@@ -250,14 +252,21 @@ def simulate_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
 
 class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
+        print(best_genome)
+        connections = [cg.key for cg in best_genome.connections.values() if cg.enabled]
+        layers = feed_forward_layers(config.genome_config.input_keys, config.genome_config.output_keys, connections)
+        print(layers)
         print('Starting simulation...')
 
-        try:
-            simulate_genome(best_genome, config)
-        except Exception as e:
-            print('Finished:', e)
+        if best_genome.fitness > 16000:
+            try:
+                simulate_genome(best_genome, config)
+            except Exception as e:
+                print('Finished:', e)
 
-            return
+                return
+
+            sys.exit(0)
 
 
 if __name__ == '__main__':
