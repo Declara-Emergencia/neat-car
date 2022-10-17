@@ -288,11 +288,6 @@ if __name__ == '__main__':
         env = Environment()
         car.add_to_space(env)
 
-        pygame.init()
-        window = pygame.display.set_mode((800, 800))
-        clock = pygame.time.Clock()
-        draw_options = pymunk.pygame_util.DrawOptions(window)
-
         frames = 1
 
         while car.alive:
@@ -310,12 +305,6 @@ if __name__ == '__main__':
                 break
 
             frames += 1
-
-            window.fill((255,255,255))
-            env.debug_draw(draw_options)
-            pygame.display.flip()
-
-            clock.tick(120)
 
         if len(agent.memory) > batch_size:
             agent.replay(batch_size)
