@@ -263,10 +263,9 @@ class CustomReporter(neat.reporting.BaseReporter):
                 simulate_genome(best_genome, config)
             except Exception as e:
                 print('Finished:', e)
+                sys.exit(0)
 
                 return
-
-            sys.exit(0)
 
 
 if __name__ == '__main__':
