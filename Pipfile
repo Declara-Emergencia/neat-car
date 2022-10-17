@@ -8,6 +8,7 @@ pymunk = "*"
 neat-python = "*"
 RectangleCollision = "*"
 pygame = "*"
+tensorflow = "*"
 
 [dev-packages]
 jedi = "*"
