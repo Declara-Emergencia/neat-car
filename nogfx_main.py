@@ -206,7 +206,7 @@ def evaluate_genome(genome: neat.DefaultGenome, config: neat.Config) -> float:
 
         frames += 1
 
-    print(car.genome.fitness)
+    #print(car.genome.fitness)
 
     return car.genome.fitness
 
@@ -270,7 +270,8 @@ class CustomReporter(neat.reporting.BaseReporter):
 
 if __name__ == '__main__':
     # Set configuration file
-    config_path = "./config-feedforward.txt"
+    #config_path = "./config-feedforward.txt"
+    config_path = "./config-noat.txt" # Without augmenting topologies
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                 neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
 
