@@ -275,6 +275,7 @@ if __name__ == '__main__':
     # Set configuration file
     config_path = "./config-feedforward.txt"
     #config_path = "./config-noat.txt" # Without augmenting topologies
+    #config_path = "./config-hiddennodes.txt" # With 5 hidden nodes at the start
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                 neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
 
