@@ -1,28 +1,24 @@
-import pyglet
-import pymunk
-import pymunk.pyglet_util
-import itertools
-import operator
 import math
+import itertools
+import functools
+import operator
+import concurrent.futures
+import sys
+import pymunk
 import neat
-from pyglet.window import mouse
-import RectangleCollision
-import MouseHandler
+from neat.graphs import feed_forward_layers
+import pygame
+import pymunk.pygame_util
+
 
 Position = tuple[float, float]
 
 
-WINDOW = pyglet.window.Window(800, 800)
-DRAW_OPTIONS = pymunk.pyglet_util.DrawOptions()
-MOUSE = MouseHandler.MouseStateHandler()
-WINDOW.push_handlers(MOUSE)
-
-button_image = pyglet.image.load('button.png')
-#button_sprite = pyglet.sprite.Sprite(button_image, x=135, y=65)
-
 class Car(pymunk.Body):
     def __init__(self, start: Position, brain: neat.nn.feed_forward.FeedForwardNetwork, genome: neat.genome.DefaultGenome):
         super().__init__()
+
+        self.alive = True
 
         self.brain = brain
         self.genome = genome
@@ -33,7 +29,8 @@ class Car(pymunk.Body):
         self.shape.elasticity = 0
         self.shape.collision_type = 5
 
-        self.previous_position = start
+        self.previous_position_stuck = start
+        self.previous_position_movement = start
 
         self.distance_traveled = 0
 
@@ -51,14 +48,6 @@ class Car(pymunk.Body):
             sensor.collision_type = i
 
             self.sensors.append(sensor)
-
-        # Permanent force forwards
-        # self.impulse = lambda dt: self.apply_force_at_local_point((10 ** 7 * dt, 0))
-        self.impulse = lambda dt: self.apply_force_at_local_point((10 ** 7 * dt / 2, 0))
-        pyglet.clock.schedule_interval(self.impulse, 1/120)
-
-        self.thought = lambda dt: self.think(dt)
-        pyglet.clock.schedule_interval(self.thought, 1/120)
 
     def update_distance(self, arbiter: pymunk.Arbiter, i: int) -> bool:
         if i >= 5:
@@ -80,7 +69,10 @@ class Car(pymunk.Body):
     def add_to_space(self, space: pymunk.Space) -> None:
         space.add(self, self.shape, *self.sensors)
 
-    def think(self, dt: float) -> None:
+    def accelerate(self) -> None:
+        self.apply_force_at_local_point((10 ** 6 / 10, 0))
+
+    def think(self) -> None:
         output = self.brain.activate(self.get_distances())
         i = output.index(max(output))  # Get node of highest value from outputs
 
@@ -92,22 +84,30 @@ class Car(pymunk.Body):
             self.space.reindex_shapes_for_body(self)
 
     def reward_movement(self) -> None:
-        self.distance_traveled += math.dist(self.previous_position, self.position)
+        self.distance_traveled += math.dist(self.previous_position_movement, self.position)
+
+        self.previous_position_movement = self.position
+
+
+    def milestone(self, milestone: pymunk.Shape) -> bool:
+        self.distance_traveled += 1000
+
+        self.space.remove(milestone)
+
+        return False
 
     def kill_if_stuck(self) -> None:
-        d = math.dist(self.previous_position, self.position)
+        d = math.dist(self.previous_position_stuck, self.position)
 
         if d < 3:
             self.die()
         else:
-            self.previous_position = self.position
+            self.previous_position_stuck = self.position
 
     def die(self) -> bool:
-        pyglet.clock.unschedule(self.impulse)
-        pyglet.clock.unschedule(self.thought)
+        self.alive = False
 
-        self.genome.fitness = self.distance_traveled  # FIXME: alguma outra funcao que nao seja f(x)
-        print(self.distance_traveled)
+        self.genome.fitness = self.distance_traveled
 
         self.space.remove(self, self.shape, *self.sensors)
 
@@ -123,12 +123,29 @@ class Sensor(pymunk.Segment):
         self.distance = distance
 
 
+class Milestone(pymunk.Circle):
+    def __init__(self, position: Position, space: pymunk.Space):
+        super().__init__(space.static_body, 10, position)
+
+        self.sensor = True
+        self.collision_type = 7
+        self.color = (255, 255, 0, 0.5)
+
+        space.add(self)
+
+
 class Environment(pymunk.Space):
     def __init__(self):
         super().__init__()
 
         self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
         self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
+
+        self.create_milestones([(200, 100), (300, 100), (400, 100), (500, 100),
+                                (550, 150), (600, 200), (650, 250),
+                                (650, 350), (600, 400), (550, 450),
+                                (500, 500), (400, 500), (300, 500), (200, 500),
+                                (100, 500), (100, 400), (100, 300), (100, 200)])
 
         self.damping = 0.5
 
@@ -139,10 +156,11 @@ class Environment(pymunk.Space):
         car_crash_handler = self.add_collision_handler(5, 9)
         car_crash_handler.pre_solve = lambda a, s, d: a.shapes[0].body.die()
 
+        milestone_handler = self.add_collision_handler(5, 7)
+        milestone_handler.pre_solve = lambda a, s, d: a.shapes[0].body.milestone(a.shapes[1])
+
         car_coll_handler = self.add_collision_handler(5, 5)
         car_coll_handler.pre_solve = lambda a, s, d: False
-
-        pyglet.clock.schedule_interval(self.step, 1/120)
 
     def create_walls(self, start: Position, moves: list[Position]) -> None:
         tuple_add = lambda a, b: tuple(map(operator.add, a, b))
@@ -153,75 +171,110 @@ class Environment(pymunk.Space):
             wall = pymunk.Segment(self.static_body, a, b, 1)
             wall.elasticity = 0
             wall.collision_type = 9
-            
+
             self.add(wall)
 
-    def run_simulation(self, genomes, config) -> None:
-        self.running = 1
-
-        for id, g in genomes:
-            nn = neat.nn.FeedForwardNetwork.create(g, config)
-            g.fitness = 0
-
-            car = Car((100, 100), nn, g)
-            car.add_to_space(self)
-
-        exit_if_empty = lambda dt: self.close_gracefully() if len(self.bodies) == 0 else None
-        pyglet.clock.schedule_interval(exit_if_empty, 1)
-
-        reward_if_moving = lambda dt: [car.reward_movement() for car in self.bodies]
-        pyglet.clock.schedule_interval(reward_if_moving, 1/5)
-
-        kill_if_not_moving = lambda dt: [car.kill_if_stuck() for car in self.bodies]
-        pyglet.clock.schedule_interval(kill_if_not_moving, 1)
-
-        pyglet.app.run()
-
-        if self.running == 1:
-            raise Exception('App closed prematurely')
-
-        pyglet.clock.unschedule(exit_if_empty)
-        pyglet.clock.unschedule(reward_if_moving)
-        pyglet.clock.unschedule(kill_if_not_moving)
-
-        if RectangleCollision.collision.rectangle(MOUSE["x"], MOUSE["y"], 0, 700, 1, 1, 100 ,100):
-            if MOUSE[mouse.LEFT]:
-                print("loading layout 1")
-                for shape in self.shapes:
-                    self.remove(shape)
-
-                self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
-                self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
-
-        elif RectangleCollision.collision.rectangle(MOUSE["x"], MOUSE["y"], 100, 700, 1, 1, 100 ,100):
-            if MOUSE[mouse.LEFT]:
-                print("loading layout 2")
-
-                for shape in self.shapes:
-                    self.remove(shape)
-
-                self.create_walls((200, 150), [(100, 200), (150, 0), (150, -200), (-400, 0), (0, -100)])
-                self.create_walls((0, 100), [(200, 350), (350, 0), (250, -350), (0, -50), (-800, 0), (0, 50)])
-
-    def close_gracefully(self):
-        pyglet.app.exit()
-        self.running = 0
+    def create_milestones(self, positions: list[Position]) -> None:
+        for p in positions:
+            milestone = Milestone(p, self)
 
 
-ENVIRONMENT = Environment()
+def evaluate_genome(genome: neat.DefaultGenome, config: neat.Config) -> float:
+    nn = neat.nn.FeedForwardNetwork.create(genome, config)
+    genome.fitness = 0
+    car = Car((100, 100), nn, genome)
+
+    frames = 1
+    env = Environment()
+    car.add_to_space(env)
+
+    while car.alive:
+        car.think()
+        car.accelerate()
+        env.step(1/120)
+
+        if frames % 44 == 0: # 5 times every "second"
+            car.reward_movement()
+
+        if frames % 120 == 0: # every "second"
+            car.kill_if_stuck()
+
+        if frames > 50000:
+            print('Took too long')
+            car.die()
+            return car.genome.fitness
+
+        frames += 1
+
+    #print(car.genome.fitness)
+
+    return car.genome.fitness
 
 
-@WINDOW.event
-def on_draw() -> None:
-    pyglet.gl.glClearColor(0, 0, 0, 0)
-    WINDOW.clear()
-    ENVIRONMENT.debug_draw(DRAW_OPTIONS)
-    button_image.blit(0, 700, 0, 100, 100)
-    button_image.blit(100, 700, 0, 100, 100)
+def simulate_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
+    nn = neat.nn.FeedForwardNetwork.create(genome, config)
+    car = Car((100, 100), nn, genome)
+
+    pygame.init()
+    window = pygame.display.set_mode((800, 800))
+    clock = pygame.time.Clock()
+
+    env = Environment()
+    car.add_to_space(env)
+
+    draw_options = pymunk.pygame_util.DrawOptions(window)
+
+    def exit_gracefully() -> bool:
+        pygame.display.quit()
+        pygame.quit()
+
+        return False
+
+    end_simul = env.add_collision_handler(5, 9)
+    end_simul.pre_solve = lambda a, s, d: exit_gracefully()
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                exit_gracefully()
+                return
+
+        car.think()
+        car.accelerate()
+        env.step(1/120)
+
+        window.fill((255,255,255))
+        env.debug_draw(draw_options)
+        pygame.display.flip()
+
+        clock.tick(120)
+
+
+class CustomReporter(neat.reporting.BaseReporter):
+    def post_evaluate(self, config, pop, species, best_genome):
+        print(best_genome)
+        connections = [cg.key for cg in best_genome.connections.values() if cg.enabled]
+        layers = feed_forward_layers(config.genome_config.input_keys, config.genome_config.output_keys, connections)
+        print(layers)
+
+        if best_genome.fitness > 16000:
+            try:
+                simulate_genome(best_genome, config)
+            except Exception as e:
+                print('Finished:', e)
+                sys.exit(0)
+
+                return
+
+#    def start_generation(self, generation):
+#        if generation > 10:
+#            sys.exit(0)
+
 
 if __name__ == '__main__':
     # Set configuration file
     config_path = "./config-feedforward.txt"
+    #config_path = "./config-noat.txt" # Without augmenting topologies
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                 neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
 
@@ -230,7 +283,11 @@ if __name__ == '__main__':
 
     # Add reporter for fancy statistical result
     p.add_reporter(neat.StdOutReporter(True))
-    stats = neat.StatisticsReporter()
-    p.add_reporter(stats)
+    p.add_reporter(neat.StatisticsReporter())
+    p.add_reporter(CustomReporter())
 
-    p.run(ENVIRONMENT.run_simulation)
+    try:
+        pe = neat.ParallelEvaluator(4, evaluate_genome)
+        p.run(pe.evaluate)
+    except Exception as e:
+        print("Interrupted!", e)
