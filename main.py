@@ -186,9 +186,9 @@ class Environment(pymunk.Space):
 def evaluate_genome(genome: neat.DefaultGenome, config: neat.Config, sim=False, test=False) -> float:
     nn = neat.nn.FeedForwardNetwork.create(genome, config)
     genome.fitness = 0
-    car = Car((100, 100), nn, genome)
 
     if test:
+        car = Car((350, 250), nn, genome)
         env = Environment(walls=[
             [(50, 50), [(100, 0), (100, 100), (0, 200), (100, 100), (100, 0), (100, -100), (0, -100),
                         (-50 , -50 ), (-50 , 0), (-50 , 50 ), (0, 50 )]],
@@ -196,6 +196,7 @@ def evaluate_genome(genome: neat.DefaultGenome, config: neat.Config, sim=False, 
                         (-150, -150), (-150, 0), (-100, 100), (0, 100), (100, 0)]]
             ])
     else:
+        car = Car((100, 100), nn, genome)
         env = Environment()
 
     car.add_to_space(env)
@@ -250,13 +251,10 @@ class CustomReporter(neat.reporting.BaseReporter):
             f.write(f'{best_genome.fitness}\n')
 
         if best_genome.fitness > 16000:
-            try:
-                print(evaluate_genome(best_genome, config, sim=True, test=True))
-            except Exception as e:
-                print('Finished:', e)
-                sys.exit(0)
+            print(evaluate_genome(best_genome, config, sim=True, test=True))
+            sys.exit(0)
 
-                return
+            return
 
 #    def start_generation(self, generation):
 #        if generation > 10:
