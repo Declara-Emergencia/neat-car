@@ -243,11 +243,15 @@ class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
         connections = [cg.key for cg in best_genome.connections.values() if cg.enabled]
         layers = feed_forward_layers(config.genome_config.input_keys, config.genome_config.output_keys, connections)
-        print(layers)
+        #print(best_genome)
+        #print(layers)
+
+        with open('evolution.csv', 'a+') as f:
+            f.write(f'{best_genome.fitness}\n')
 
         if best_genome.fitness > 16000:
             try:
-                evaluate_genome(best_genome, config, sim=True, test=True)
+                print(evaluate_genome(best_genome, config, sim=True, test=True))
             except Exception as e:
                 print('Finished:', e)
                 sys.exit(0)
@@ -274,6 +278,10 @@ if __name__ == '__main__':
     p.add_reporter(neat.StdOutReporter(True))
     p.add_reporter(neat.StatisticsReporter())
     p.add_reporter(CustomReporter())
+
+    # Record evolution of best fitness
+    with open('evolution.csv', 'w+') as f:
+        f.truncate(0)
 
     try:
         pe = neat.ParallelEvaluator(4, evaluate_genome)
