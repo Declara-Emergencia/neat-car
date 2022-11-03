@@ -135,17 +135,21 @@ class Milestone(pymunk.Circle):
 
 
 class Environment(pymunk.Space):
-    def __init__(self):
+    def __init__(self, walls=None):
         super().__init__()
 
-        self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
-        self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
+        if walls:
+            for wall in walls:
+                self.create_walls(*wall)
+        else:
+            self.create_walls((50, 50), [(500, 0), (200, 200), (0, 100), (-200, 200), (-500, 0), (0, -500)])
+            self.create_walls((50, 150), [(400, 0), (100, 100), (0, 100), (-100, 100), (-300, 0), (0, -300)])
 
-        self.create_milestones([(200, 100), (300, 100), (400, 100), (500, 100),
-                                (550, 150), (600, 200), (650, 250),
-                                (650, 350), (600, 400), (550, 450),
-                                (500, 500), (400, 500), (300, 500), (200, 500),
-                                (100, 500), (100, 400), (100, 300), (100, 200)])
+            self.create_milestones([(200, 100), (300, 100), (400, 100), (500, 100),
+                                    (550, 150), (600, 200), (650, 250),
+                                    (650, 350), (600, 400), (550, 450),
+                                    (500, 500), (400, 500), (300, 500), (200, 500),
+                                    (100, 500), (100, 400), (100, 300), (100, 200)])
 
         self.damping = 0.5
 
@@ -250,6 +254,63 @@ def simulate_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
         clock.tick(120)
 
 
+def test_genome(genome: neat.DefaultGenome, config: neat.Config) -> None:
+    nn = neat.nn.FeedForwardNetwork.create(genome, config)
+    car = Car((350, 250), nn, genome)
+
+    pygame.init()
+    window = pygame.display.set_mode((800, 600))
+    clock = pygame.time.Clock()
+    draw_options = pymunk.pygame_util.DrawOptions(window)
+
+    env = Environment(walls=[
+            [(50, 50), [(100, 0), (100, 100), (0, 200), (100, 100), (100, 0), (100, -100), (0, -100),
+                        (-50 , -50 ), (-50 , 0), (-50 , 50 ), (0, 50 )]],
+            [(50, 50), [(0, 100), (100, 100), (0, 150), (150, 150), (200, 0), (200, -200), (0, -100),
+                        (-150, -150), (-150, 0), (-100, 100), (0, 100), (100, 0)]]
+        ])
+
+    car.add_to_space(env)
+    frames = 1
+
+    def exit_gracefully() -> int:
+        pygame.display.quit()
+        pygame.quit()
+
+    while car.alive:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                exit_gracefully()
+                return car.genome.fitness
+
+        car.think()
+        car.accelerate()
+        env.step(1/120)
+
+        if frames % 44 == 0: # 5 times every "second"
+            car.reward_movement()
+
+        if frames % 120 == 0: # every "second"
+            car.kill_if_stuck()
+
+        if frames > 50000:
+            print('Took too long')
+            car.die()
+            return car.genome.fitness
+
+        window.fill((255,255,255))
+        env.debug_draw(draw_options)
+        pygame.display.flip()
+
+        clock.tick(120)
+
+        frames += 1
+
+    exit_gracefully()
+
+    return car.genome.fitness
+
+
 class CustomReporter(neat.reporting.BaseReporter):
     def post_evaluate(self, config, pop, species, best_genome):
         print(best_genome)
@@ -260,7 +321,9 @@ class CustomReporter(neat.reporting.BaseReporter):
         if best_genome.fitness > 16000:
             try:
                 simulate_genome(best_genome, config)
+                test_genome(best_genome, config)
             except Exception as e:
+                test_genome(best_genome, config)
                 print('Finished:', e)
                 sys.exit(0)
 
